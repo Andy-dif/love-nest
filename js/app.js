@@ -34,43 +34,56 @@ let supabase = null;
 let supabaseChannel = null;
 
 function initSupabase() {
-    // Try to use pre-loaded supabase, or load dynamically
-    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+    function connectSupabase() {
         try {
+            if (!window.supabase || !window.supabase.createClient) return false;
             supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-            console.log('Supabase connected (pre-loaded)');
+            console.log('Supabase connected!');
             return true;
-        } catch (e) { console.warn('Supabase init failed:', e.message); }
+        } catch (e) {
+            console.warn('Supabase init error:', e.message);
+            return false;
+        }
     }
 
-    // Dynamically load Supabase SDK without blocking
+    function afterConnect() {
+        loadFromCloud().then(() => {
+            subscribeToCloudChanges();
+            updateAllUI();
+            updateOnlineStatus(true);
+        }).catch(() => {
+            updateOnlineStatus(false);
+        });
+    }
+
+    // Already loaded?
+    if (connectSupabase()) {
+        afterConnect();
+        return;
+    }
+
+    // Dynamic load
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-    script.onload = () => {
-        try {
-            supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-            console.log('Supabase connected (dynamic load)');
-            loadFromCloud().then(() => {
-                subscribeToCloudChanges();
-                updateAllUI();
-                updateOnlineStatus(true);
-            });
-        } catch (e) { console.warn('Supabase dynamic init failed:', e.message); }
+    script.onload = function() {
+        if (connectSupabase()) {
+            afterConnect();
+        }
     };
-    script.onerror = () => {
-        console.warn('Supabase CDN unreachable, running in local mode');
+    script.onerror = function() {
         updateOnlineStatus(false);
     };
-    // Load with a 5-second timeout fallback
-    setTimeout(() => {
-        if (!supabase) {
-            console.warn('Supabase load timeout, running in local mode');
-            updateOnlineStatus(false);
-        }
-    }, 5000);
     document.head.appendChild(script);
 
-    return false; // Not immediately ready, will connect async
+    // 8s timeout
+    setTimeout(function() {
+        if (!supabase) updateOnlineStatus(false);
+    }, 8000);
+}
+
+function safeCloud(fn) {
+    if (!supabase) return;
+    try { fn(); } catch(e) {}
 }
 
 async function syncPetToCloud() {
