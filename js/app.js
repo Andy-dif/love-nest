@@ -34,18 +34,43 @@ let supabase = null;
 let supabaseChannel = null;
 
 function initSupabase() {
-    if (typeof window.supabase === 'undefined') {
-        console.warn('Supabase SDK not loaded, using local mode');
-        return false;
+    // Try to use pre-loaded supabase, or load dynamically
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+        try {
+            supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+            console.log('Supabase connected (pre-loaded)');
+            return true;
+        } catch (e) { console.warn('Supabase init failed:', e.message); }
     }
-    try {
-        supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-        console.log('Supabase connected');
-        return true;
-    } catch (e) {
-        console.warn('Supabase init failed:', e.message);
-        return false;
-    }
+
+    // Dynamically load Supabase SDK without blocking
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+    script.onload = () => {
+        try {
+            supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+            console.log('Supabase connected (dynamic load)');
+            loadFromCloud().then(() => {
+                subscribeToCloudChanges();
+                updateAllUI();
+                updateOnlineStatus(true);
+            });
+        } catch (e) { console.warn('Supabase dynamic init failed:', e.message); }
+    };
+    script.onerror = () => {
+        console.warn('Supabase CDN unreachable, running in local mode');
+        updateOnlineStatus(false);
+    };
+    // Load with a 5-second timeout fallback
+    setTimeout(() => {
+        if (!supabase) {
+            console.warn('Supabase load timeout, running in local mode');
+            updateOnlineStatus(false);
+        }
+    }, 5000);
+    document.head.appendChild(script);
+
+    return false; // Not immediately ready, will connect async
 }
 
 async function syncPetToCloud() {
@@ -232,18 +257,14 @@ const COOLDOWNS = { feed: 30000, play: 45000, sleep: 60000, love: 20000 };
 // ============================================
 // INITIALIZATION
 // ============================================
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     loadAllData();
     startHeartAnimation();
 
-    // Init Supabase for cross-device sync
-    const cloudReady = initSupabase();
-    if (cloudReady) {
-        await loadFromCloud();
-        subscribeToCloudChanges();
-    }
+    // Start Supabase in background (non-blocking)
+    initSupabase();
 
-    // Check if already logged in this session
+    // Show UI immediately - don't wait for cloud
     const sessionUser = sessionStorage.getItem('loveNestUser');
     if (sessionUser && USERS[sessionUser]) {
         loginUser(sessionUser, false);
