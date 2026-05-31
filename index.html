@@ -11,11 +11,42 @@
     <!-- Floating Hearts Background -->
     <div class="hearts-bg" id="heartsBg"></div>
 
-    <!-- Main Container -->
-    <div class="main-container">
+    <!-- ============================================ -->
+    <!-- LOGIN OVERLAY -->
+    <!-- ============================================ -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-card">
+            <div class="login-hearts">💕💖💕</div>
+            <h1 class="login-title">恋爱小窝</h1>
+            <p class="login-subtitle">李安 💕 韩舒薇</p>
+            <div class="login-form">
+                <div class="login-field">
+                    <label>👤 你是谁？</label>
+                    <input type="text" id="loginName" placeholder="输入你的名字（李安 或 韩舒薇）" autocomplete="off">
+                </div>
+                <div class="login-field">
+                    <label>🔐 密码</label>
+                    <input type="password" id="loginPassword" placeholder="输入密码">
+                </div>
+                <div class="login-error" id="loginError" style="display:none;"></div>
+                <button class="login-btn" onclick="attemptLogin()">💕 进入我们的小窝</button>
+            </div>
+            <p class="login-hint">🔑 提示：输入名字和专属密码即可进入</p>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- MAIN APP -->
+    <!-- ============================================ -->
+    <div class="main-container" id="mainApp" style="display:none;">
 
         <!-- Header -->
         <header class="header">
+            <div class="header-user-badge">
+                <span id="headerUserEmoji">👤</span>
+                <span id="headerUserName">...</span>
+                <span class="header-online-dot"></span>
+            </div>
             <h1 class="title">
                 <span class="name name-li">李安</span>
                 <span class="heart-icon">💕</span>
@@ -24,6 +55,10 @@
             <p class="subtitle">我们的小窝</p>
             <div class="days-counter" id="daysCounter">
                 💝 在一起的第 <span id="daysCount">...</span> 天 💝
+            </div>
+            <div class="header-actions">
+                <button class="header-btn" onclick="switchUser()" title="切换用户">🔄 切换</button>
+                <button class="header-btn logout-btn" onclick="logout()" title="退出登录">🚪 退出</button>
             </div>
         </header>
 
@@ -87,36 +122,25 @@
                 <button class="action-btn feed-btn" onclick="performAction('feed')" id="btnFeed">
                     <span class="btn-icon">🍖</span>
                     <span class="btn-label">喂食</span>
-                    <span class="btn-effect">+30</span>
                 </button>
                 <button class="action-btn play-btn" onclick="performAction('play')" id="btnPlay">
                     <span class="btn-icon">🎾</span>
                     <span class="btn-label">玩耍</span>
-                    <span class="btn-effect">+25</span>
                 </button>
                 <button class="action-btn sleep-btn" onclick="performAction('sleep')" id="btnSleep">
                     <span class="btn-icon">😴</span>
                     <span class="btn-label">哄睡</span>
-                    <span class="btn-effect">+40</span>
                 </button>
                 <button class="action-btn love-btn" onclick="performAction('love')" id="btnLove">
                     <span class="btn-icon">💕</span>
                     <span class="btn-label">亲亲</span>
-                    <span class="btn-effect">+20</span>
                 </button>
-            </div>
-
-            <!-- Who's acting -->
-            <div class="who-acting">
-                <span>我是：</span>
-                <button class="identity-btn active" id="btnLiAn" onclick="setIdentity('李安')">👦 李安</button>
-                <button class="identity-btn" id="btnHan" onclick="setIdentity('韩舒薇')">👧 韩舒薇</button>
             </div>
 
             <!-- Online indicator -->
             <div class="online-indicator">
-                <span class="online-dot" id="onlineDot"></span>
-                <span id="onlineText">等待对方上线...</span>
+                <span class="online-dot connected" id="onlineDot"></span>
+                <span id="onlineText">💡 快捷键: F喂食 P玩耍 S哄睡 L亲亲 | Ctrl+Enter发小纸条</span>
             </div>
         </section>
 
@@ -124,19 +148,19 @@
         <section class="notes-section">
             <h2 class="section-title">💌 恋爱小纸条</h2>
             <div class="notes-container" id="notesContainer">
-                <div class="notes-empty" id="notesEmpty">还没有小纸条，快来写一张吧~</div>
+                <div class="notes-empty">还没有小纸条，快来写一张吧~</div>
             </div>
             <div class="note-input-area">
-                <textarea id="noteInput" placeholder="给舒薇/李安写一句话..." maxlength="200"></textarea>
+                <textarea id="noteInput" placeholder="给亲爱的写一句话... (Ctrl+Enter 发送)" maxlength="200"></textarea>
                 <button class="send-note-btn" onclick="sendNote()">💌 发送</button>
             </div>
         </section>
 
         <!-- Activity Log -->
         <section class="log-section">
-            <h2 class="section-title">📋 动态记录</h2>
+            <h2 class="section-title">📋 互动记录</h2>
             <div class="log-container" id="logContainer">
-                <div class="log-empty" id="logEmpty">还没有动态，快来互动吧~</div>
+                <div class="log-empty">还没有动态，快来互动吧~</div>
             </div>
         </section>
 
@@ -147,7 +171,7 @@
         </footer>
     </div>
 
-    <!-- Anniversary Settings Modal -->
+    <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsModal" style="display:none;">
         <div class="modal">
             <h3>⚙️ 设置</h3>
@@ -166,7 +190,7 @@
         </div>
     </div>
 
-    <!-- Toast notification -->
+    <!-- Toast -->
     <div class="toast" id="toast" style="display:none;">
         <span id="toastMsg"></span>
     </div>
@@ -174,9 +198,9 @@
     <!-- Settings gear -->
     <button class="settings-gear" onclick="openSettings()" title="设置">⚙️</button>
 
-    <!-- Supabase CDN (for real-time sync) -->
+    <!-- Supabase CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- App Scripts -->
+    <!-- App Script -->
     <script src="js/app.js"></script>
 </body>
 </html>

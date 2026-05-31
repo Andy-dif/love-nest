@@ -970,6 +970,275 @@ body {
     box-shadow: 0 8px 30px rgba(255, 179, 71, 0.5), 0 0 40px rgba(255, 215, 0, 0.3), inset 0 -8px 20px rgba(0,0,0,0.08), inset 0 8px 20px rgba(255,255,255,0.3);
 }
 
+/* ============================================
+   LOGIN OVERLAY
+   ============================================ */
+.login-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #fff5f7, #ffeef2, #fce4ec, #f8e8ff);
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.5s ease;
+}
+
+.login-card {
+    background: white;
+    border-radius: 24px;
+    padding: 40px 32px;
+    width: 90%;
+    max-width: 380px;
+    box-shadow: 0 20px 60px rgba(255, 107, 157, 0.2);
+    text-align: center;
+    animation: fadeInUp 0.6s ease;
+}
+
+.login-hearts {
+    font-size: 2rem;
+    margin-bottom: 12px;
+    animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+.login-title {
+    font-size: 1.8rem;
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+}
+
+.login-subtitle {
+    color: var(--text-light);
+    font-size: 1rem;
+    margin-bottom: 28px;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.login-field {
+    text-align: left;
+}
+
+.login-field label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    color: var(--text);
+}
+
+.login-field input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #f0e0e5;
+    border-radius: 14px;
+    font-family: var(--font);
+    font-size: 1rem;
+    outline: none;
+    transition: all 0.3s ease;
+    background: #fffafa;
+}
+
+.login-field input:focus {
+    border-color: var(--rose);
+    box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.1);
+}
+
+.login-error {
+    background: #fff0f0;
+    color: #e74c3c;
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    animation: shake 0.5s ease;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-family: var(--font);
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(240, 147, 251, 0.4);
+    margin-top: 4px;
+}
+
+.login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(240, 147, 251, 0.5);
+}
+
+.login-btn:active {
+    transform: translateY(0);
+}
+
+.login-hint {
+    margin-top: 20px;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    opacity: 0.7;
+}
+
+/* ============================================
+   HEADER USER BADGE & ACTIONS
+   ============================================ */
+.header-user-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: white;
+    padding: 6px 14px;
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    animation: fadeInDown 0.5s ease;
+}
+
+.header-user-badge .header-online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4caf50;
+    box-shadow: 0 0 6px rgba(76, 175, 80, 0.5);
+    margin-left: 2px;
+}
+
+.header-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.header-btn {
+    padding: 6px 14px;
+    border: 1.5px solid #e0d0d8;
+    border-radius: 15px;
+    background: white;
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+    color: var(--text-light);
+}
+
+.header-btn:hover {
+    border-color: var(--rose);
+    color: var(--rose);
+    background: #fff5f7;
+}
+
+.logout-btn:hover {
+    border-color: #e74c3c;
+    color: #e74c3c;
+    background: #fff0f0;
+}
+
+/* ============================================
+   NOTE CARDS - PER USER COLORS
+   ============================================ */
+.note-card.note-li {
+    border-left-color: #667eea;
+    background: linear-gradient(135deg, #f5f7ff, #eef0ff);
+}
+
+.note-card.note-han {
+    border-left-color: #f5576c;
+    background: linear-gradient(135deg, #fff5f7, #ffeef2);
+}
+
+.note-card.note-li .note-author {
+    color: #667eea;
+}
+
+.note-card.note-han .note-author {
+    color: #f5576c;
+}
+
+/* ============================================
+   THEME: 李安 (Blue-ish)
+   ============================================ */
+body.theme-li .pet-section {
+    border: 1px solid rgba(102, 126, 234, 0.1);
+}
+
+body.theme-li .action-btn.ready {
+    animation-name: btnReadyBlue;
+}
+
+@keyframes btnReadyBlue {
+    0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    50% { box-shadow: 0 4px 25px rgba(102, 126, 234, 0.5); }
+}
+
+body.theme-li .header-user-badge {
+    border: 1px solid rgba(102, 126, 234, 0.15);
+}
+
+body.theme-li .header-user-badge .header-online-dot {
+    background: #667eea;
+    box-shadow: 0 0 6px rgba(102, 126, 234, 0.5);
+}
+
+/* ============================================
+   THEME: 韩舒薇 (Pink)
+   ============================================ */
+body.theme-han .pet-section {
+    border: 1px solid rgba(245, 87, 108, 0.1);
+}
+
+body.theme-han .action-btn.ready {
+    animation-name: btnReadyPink;
+}
+
+@keyframes btnReadyPink {
+    0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    50% { box-shadow: 0 4px 25px rgba(245, 87, 108, 0.5); }
+}
+
+body.theme-han .header-user-badge {
+    border: 1px solid rgba(245, 87, 108, 0.15);
+}
+
+body.theme-han .header-user-badge .header-online-dot {
+    background: #f5576c;
+    box-shadow: 0 0 6px rgba(245, 87, 108, 0.5);
+}
+
+/* ============================================
+   RESPONSIVE - Login
+   ============================================ */
+@media (max-width: 480px) {
+    .login-card {
+        padding: 28px 20px;
+    }
+    .login-title {
+        font-size: 1.5rem;
+    }
+    .header-user-badge {
+        font-size: 0.8rem;
+        padding: 4px 12px;
+    }
+}
+
 /* --- Responsive Design --- */
 @media (max-width: 480px) {
     .title {

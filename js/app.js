@@ -1,439 +1,260 @@
 /* ============================================
-   恋爱小窝 - Love Nest
+   恋爱小窝 - Love Nest  v2.0
    李安 ❤️ 韩舒薇
-   Interactive Virtual Pet Application
+   With login system & real-time interaction
    ============================================ */
 
 // ============================================
-// CONFIGURATION
+// USER ACCOUNTS
 // ============================================
-
-// Supabase Configuration - REPLACE with your own Supabase project credentials
-// 1. Go to https://supabase.com and create a free account
-// 2. Create a new project
-// 3. Go to Settings -> API to find your URL and anon key
-// 4. Paste them below:
-const SUPABASE_CONFIG = {
-    url: 'YOUR_SUPABASE_URL',        // e.g. 'https://xxxxx.supabase.co'
-    anonKey: 'YOUR_SUPABASE_ANON_KEY' // e.g. 'eyJhbGciOiJIUzI1NiIs...'
-};
-
-// If you haven't configured Supabase, the app works in LOCAL MODE
-// (data saved in browser, no sync between devices)
-const USE_SUPABASE = SUPABASE_CONFIG.url !== 'YOUR_SUPABASE_URL';
-
-// ============================================
-// SUPABASE CLIENT
-// ============================================
-let supabase = null;
-let supabaseChannel = null;
-
-if (USE_SUPABASE) {
-    try {
-        supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-    } catch (e) {
-        console.warn('Supabase init failed, using local mode:', e.message);
+const USERS = {
+    '李安': {
+        password: 'lian520',
+        emoji: '👦',
+        theme: 'li',  // blue-ish theme
+        color: '#667eea'
+    },
+    '韩舒薇': {
+        password: 'shuwei520',
+        emoji: '👧',
+        theme: 'han',  // pink theme
+        color: '#f5576c'
     }
-}
-
-// ============================================
-// PET STATE
-// ============================================
-const DEFAULT_PET = {
-    name: '小团子',
-    hunger: 100,
-    happiness: 100,
-    energy: 100,
-    evolutionStage: 1,
-    lastFedAt: null,
-    lastPlayedAt: null,
-    lastSleptAt: null,
-    lastLovedAt: null,
-    updatedAt: Date.now(),
-    updatedBy: ''
 };
 
 // ============================================
 // APP STATE
 // ============================================
 let appState = {
-    pet: { ...DEFAULT_PET },
-    identity: '李安',          // Who is using the app right now
-    notes: [],                 // Love notes
-    activityLog: [],           // Activity log entries
-    anniversary: '2024-01-01', // Default anniversary date
+    // Current session
+    loggedInUser: null,    // '李安' or '韩舒薇' or null
+
+    // Pet data
+    pet: {
+        name: '小团子',
+        hunger: 100,
+        happiness: 100,
+        energy: 100,
+        evolutionStage: 1,
+        lastFedAt: null,
+        lastPlayedAt: null,
+        lastSleptAt: null,
+        lastLovedAt: null,
+        updatedAt: Date.now(),
+        updatedBy: ''
+    },
+
+    // Content
+    notes: [],
+    activityLog: [],
+    anniversary: '2024-01-01',
     lastDecayCheck: Date.now(),
-    cooldowns: {               // Cooldown timers for actions (ms)
-        feed: 0,
-        play: 0,
-        sleep: 0,
-        love: 0
-    }
+
+    // Cooldowns
+    cooldowns: { feed: 0, play: 0, sleep: 0, love: 0 }
 };
 
-// Cooldown durations in milliseconds
-const COOLDOWNS = {
-    feed: 30000,    // 30 seconds
-    play: 45000,    // 45 seconds
-    sleep: 60000,   // 60 seconds
-    love: 20000     // 20 seconds
-};
+const DEFAULT_PET = { ...appState.pet };
+const COOLDOWNS = { feed: 30000, play: 45000, sleep: 60000, love: 20000 };
 
 // ============================================
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    initApp();
+    loadAllData();
+    startHeartAnimation();
+
+    // Check if already logged in this session
+    const sessionUser = sessionStorage.getItem('loveNestUser');
+    if (sessionUser && USERS[sessionUser]) {
+        loginUser(sessionUser, false); // skip password, already verified
+    } else {
+        showLoginScreen();
+    }
+
+    // Keyboard shortcut: Esc to logout
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && e.ctrlKey) {
+            logout();
+        }
+    });
 });
 
-async function initApp() {
-    loadLocalState();
+// ============================================
+// LOGIN SYSTEM
+// ============================================
+function showLoginScreen() {
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.getElementById('mainApp').style.display = 'none';
+    document.getElementById('loginError').style.display = 'none';
+    document.getElementById('loginName').value = '';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginName').focus();
+}
 
-    if (USE_SUPABASE && supabase) {
-        await loadSupabaseState();
-        subscribeToChanges();
+function hideLoginScreen() {
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('mainApp').style.display = '';
+}
+
+function attemptLogin() {
+    const name = document.getElementById('loginName').value.trim();
+    const password = document.getElementById('loginPassword').value.trim();
+    const errorEl = document.getElementById('loginError');
+
+    if (!name || !password) {
+        errorEl.textContent = '请输入名字和密码 💕';
+        errorEl.style.display = '';
+        return;
     }
 
+    const user = USERS[name];
+    if (!user) {
+        errorEl.textContent = '用户不存在，请输入"李安"或"韩舒薇"';
+        errorEl.style.display = '';
+        return;
+    }
+
+    if (password !== user.password) {
+        errorEl.textContent = '密码错误，再试一次~';
+        errorEl.style.display = '';
+        document.getElementById('loginPassword').value = '';
+        document.getElementById('loginPassword').focus();
+        return;
+    }
+
+    loginUser(name, true);
+}
+
+function loginUser(name, showWelcome) {
+    const user = USERS[name];
+    appState.loggedInUser = name;
+    sessionStorage.setItem('loveNestUser', name);
+
+    // Apply theme
+    document.body.className = '';
+    document.body.classList.add(`theme-${user.theme}`);
+
+    hideLoginScreen();
+    updateLoginUI();
     updateAllUI();
     startDecayTimer();
-    startHeartAnimation();
     startCooldownTimers();
-
-    // Check URL hash for identity
-    const hash = window.location.hash.slice(1);
-    if (hash === 'han' || hash === '韩舒薇') {
-        setIdentity('韩舒薇');
-    } else if (hash === 'li' || hash === '李安') {
-        setIdentity('李安');
-    }
-
-    showToast('💕 欢迎来到我们的小窝！');
-    petSay('快来照顾我吧~');
-
-    // Update online status
-    updateOnlineStatus(true);
-
-    // Notify others via BroadcastChannel (for same-device tabs)
     setupBroadcastChannel();
+
+    // Keyboard shortcuts for actions
+    document.addEventListener('keydown', handleActionKeys);
+
+    if (showWelcome) {
+        showToast(`${user.emoji} 欢迎回来，${name}！`);
+        petSay(`${name}来啦~ 好想你！`);
+    }
+}
+
+function handleActionKeys(e) {
+    // Don't trigger when typing in inputs
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    switch(e.key.toLowerCase()) {
+        case 'f': performAction('feed'); break;
+        case 'p': performAction('play'); break;
+        case 's': performAction('sleep'); break;
+        case 'l': performAction('love'); break;
+    }
+}
+
+function logout() {
+    appState.loggedInUser = null;
+    sessionStorage.removeItem('loveNestUser');
+    document.body.className = '';
+    showLoginScreen();
+    document.removeEventListener('keydown', handleActionKeys);
+    showToast('👋 已退出登录');
+}
+
+function switchUser() {
+    if (confirm('确定要切换用户吗？')) {
+        logout();
+    }
+}
+
+function updateLoginUI() {
+    const user = USERS[appState.loggedInUser];
+    if (!user) return;
+
+    document.getElementById('headerUserName').textContent = appState.loggedInUser;
+    document.getElementById('headerUserEmoji').textContent = user.emoji;
+
+    // Update identity buttons (if they exist in the page)
+    const btnLi = document.getElementById('btnLiAn');
+    const btnHan = document.getElementById('btnHan');
+    if (btnLi) btnLi.classList.toggle('active', appState.loggedInUser === '李安');
+    if (btnHan) btnHan.classList.toggle('active', appState.loggedInUser === '韩舒薇');
+}
+
+function setIdentity(name) {
+    if (appState.loggedInUser !== name) {
+        // Need to re-login as the other user
+        if (confirm(`切换到${name}需要重新登录，确定吗？`)) {
+            logout();
+            // Pre-fill the name
+            setTimeout(() => {
+                document.getElementById('loginName').value = name;
+                document.getElementById('loginPassword').focus();
+            }, 200);
+        }
+    }
 }
 
 // ============================================
-// LOCAL STORAGE
+// DATA PERSISTENCE (localStorage)
 // ============================================
-function loadLocalState() {
+function loadAllData() {
     try {
-        const saved = localStorage.getItem('loveNestState');
+        const saved = localStorage.getItem('loveNestData');
         if (saved) {
-            const parsed = JSON.parse(saved);
-            // Merge with defaults to handle new fields
-            appState.pet = { ...DEFAULT_PET, ...parsed.pet };
-            appState.notes = parsed.notes || [];
-            appState.activityLog = parsed.activityLog || [];
-            appState.anniversary = parsed.anniversary || '2024-01-01';
-            appState.identity = parsed.identity || '李安';
-            appState.cooldowns = parsed.cooldowns || appState.cooldowns;
-
-            // Apply time-based decay
+            const data = JSON.parse(saved);
+            appState.pet = { ...DEFAULT_PET, ...data.pet };
+            appState.notes = data.notes || [];
+            appState.activityLog = data.activityLog || [];
+            appState.anniversary = data.anniversary || '2024-01-01';
+            appState.cooldowns = data.cooldowns || appState.cooldowns;
             applyDecay();
         }
     } catch (e) {
-        console.warn('Failed to load local state:', e);
+        console.warn('Load error:', e);
     }
 }
 
-function saveLocalState() {
+function saveAllData() {
     try {
-        const toSave = {
+        localStorage.setItem('loveNestData', JSON.stringify({
             pet: appState.pet,
-            notes: appState.notes.slice(-50),  // Keep last 50 notes
-            activityLog: appState.activityLog.slice(-100),  // Keep last 100 entries
+            notes: appState.notes.slice(-50),
+            activityLog: appState.activityLog.slice(-100),
             anniversary: appState.anniversary,
-            identity: appState.identity,
             cooldowns: appState.cooldowns
-        };
-        localStorage.setItem('loveNestState', JSON.stringify(toSave));
+        }));
     } catch (e) {
-        console.warn('Failed to save local state:', e);
-    }
-}
-
-// ============================================
-// SUPABASE INTEGRATION
-// ============================================
-async function loadSupabaseState() {
-    if (!supabase) return;
-
-    try {
-        // Load pet state
-        const { data: petData, error: petError } = await supabase
-            .from('pet_state')
-            .select('*')
-            .eq('id', 1)
-            .single();
-
-        if (petData && !petError) {
-            appState.pet = {
-                name: petData.name || DEFAULT_PET.name,
-                hunger: petData.hunger,
-                happiness: petData.happiness,
-                energy: petData.energy,
-                evolutionStage: petData.evolution_stage || 1,
-                updatedAt: new Date(petData.updated_at).getTime(),
-                updatedBy: petData.updated_by || '',
-                lastFedAt: petData.last_fed_at,
-                lastPlayedAt: petData.last_played_at,
-                lastSleptAt: petData.last_slept_at,
-                lastLovedAt: petData.last_loved_at,
-            };
-            applyDecay();
-        }
-
-        // Load notes
-        const { data: notesData } = await supabase
-            .from('love_notes')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (notesData) {
-            appState.notes = notesData.map(n => ({
-                id: n.id,
-                author: n.author,
-                text: n.text,
-                createdAt: new Date(n.created_at).getTime()
-            }));
-        }
-
-        // Load activity log
-        const { data: logData } = await supabase
-            .from('activity_log')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (logData) {
-            appState.activityLog = logData.map(l => ({
-                id: l.id,
-                action: l.action,
-                actor: l.actor,
-                message: l.message,
-                createdAt: new Date(l.created_at).getTime()
-            }));
-        }
-
-        // Load settings
-        const { data: settingsData } = await supabase
-            .from('settings')
-            .select('*')
-            .eq('id', 1)
-            .single();
-
-        if (settingsData) {
-            appState.anniversary = settingsData.anniversary || appState.anniversary;
-        }
-
-        updateAllUI();
-        saveLocalState();
-    } catch (e) {
-        console.warn('Supabase load failed, using local data:', e.message);
-    }
-}
-
-async function savePetToSupabase() {
-    if (!supabase) return;
-    try {
-        await supabase
-            .from('pet_state')
-            .upsert({
-                id: 1,
-                name: appState.pet.name,
-                hunger: appState.pet.hunger,
-                happiness: appState.pet.happiness,
-                energy: appState.pet.energy,
-                evolution_stage: appState.pet.evolutionStage,
-                last_fed_at: appState.pet.lastFedAt,
-                last_played_at: appState.pet.lastPlayedAt,
-                last_slept_at: appState.pet.lastSleptAt,
-                last_loved_at: appState.pet.lastLovedAt,
-                updated_at: new Date().toISOString(),
-                updated_by: appState.pet.updatedBy
-            });
-    } catch (e) {
-        console.warn('Supabase save pet failed:', e.message);
-    }
-}
-
-async function saveNoteToSupabase(note) {
-    if (!supabase) return;
-    try {
-        await supabase
-            .from('love_notes')
-            .insert({
-                author: note.author,
-                text: note.text,
-                created_at: new Date(note.createdAt).toISOString()
-            });
-    } catch (e) {
-        console.warn('Supabase save note failed:', e.message);
-    }
-}
-
-async function saveLogToSupabase(entry) {
-    if (!supabase) return;
-    try {
-        await supabase
-            .from('activity_log')
-            .insert({
-                action: entry.action,
-                actor: entry.actor,
-                message: entry.message,
-                created_at: new Date(entry.createdAt).toISOString()
-            });
-    } catch (e) {
-        console.warn('Supabase save log failed:', e.message);
-    }
-}
-
-async function saveSettingsToSupabase() {
-    if (!supabase) return;
-    try {
-        await supabase
-            .from('settings')
-            .upsert({
-                id: 1,
-                anniversary: appState.anniversary,
-                updated_at: new Date().toISOString()
-            });
-    } catch (e) {
-        console.warn('Supabase save settings failed:', e.message);
-    }
-}
-
-function subscribeToChanges() {
-    if (!supabase) return;
-
-    // Subscribe to pet state changes
-    supabaseChannel = supabase
-        .channel('love-nest-changes')
-        .on('postgres_changes',
-            { event: '*', schema: 'public', table: 'pet_state' },
-            (payload) => {
-                const newData = payload.new;
-                if (newData && newData.updated_by !== appState.identity) {
-                    // Another user made a change
-                    appState.pet.hunger = newData.hunger;
-                    appState.pet.happiness = newData.happiness;
-                    appState.pet.energy = newData.energy;
-                    appState.pet.evolutionStage = newData.evolution_stage;
-                    appState.pet.updatedBy = newData.updated_by;
-                    appState.pet.name = newData.name;
-                    appState.pet.updatedAt = new Date(newData.updated_at).getTime();
-                    updateAllUI();
-                    saveLocalState();
-                    petSay(`${newData.updated_by}刚刚照顾了我~`);
-                    updateOnlineStatus(true);
-                }
-            }
-        )
-        .on('postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'love_notes' },
-            (payload) => {
-                const note = payload.new;
-                if (note.author !== appState.identity) {
-                    appState.notes.unshift({
-                        id: note.id,
-                        author: note.author,
-                        text: note.text,
-                        createdAt: new Date(note.created_at).getTime()
-                    });
-                    renderNotes();
-                    showToast(`💌 ${note.author}写了一张小纸条！`);
-                }
-            }
-        )
-        .on('postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'activity_log' },
-            (payload) => {
-                const entry = payload.new;
-                if (entry.actor !== appState.identity) {
-                    appState.activityLog.unshift({
-                        id: entry.id,
-                        action: entry.action,
-                        actor: entry.actor,
-                        message: entry.message,
-                        createdAt: new Date(entry.created_at).getTime()
-                    });
-                    renderActivityLog();
-                }
-            }
-        )
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                console.log('🔗 Real-time sync connected!');
-                updateOnlineStatus(true);
-            }
-        });
-}
-
-// ============================================
-// BROADCAST CHANNEL (Same-device cross-tab sync)
-// ============================================
-let bc = null;
-
-function setupBroadcastChannel() {
-    try {
-        bc = new BroadcastChannel('love-nest');
-        bc.onmessage = (event) => {
-            const { type, data } = event.data;
-            if (type === 'petUpdate' && data.updatedBy !== appState.identity) {
-                appState.pet = { ...appState.pet, ...data };
-                updateAllUI();
-                saveLocalState();
-                petSay(`${data.updatedBy}刚刚照顾了我~`);
-            } else if (type === 'note' && data.author !== appState.identity) {
-                appState.notes.unshift(data);
-                renderNotes();
-                showToast(`💌 ${data.author}写了一张小纸条！`);
-            } else if (type === 'log' && data.actor !== appState.identity) {
-                appState.activityLog.unshift(data);
-                renderActivityLog();
-            }
-        };
-    } catch (e) {
-        // BroadcastChannel not supported
-    }
-}
-
-function broadcastUpdate(type, data) {
-    if (bc) {
-        try {
-            bc.postMessage({ type, data });
-        } catch (e) {}
+        console.warn('Save error:', e);
     }
 }
 
 // ============================================
 // PET LOGIC
 // ============================================
-
-// Stats decay rates per minute
-const DECAY_RATES = {
-    hunger: 0.35,    // ~4.7 hours from 100 to 0
-    happiness: 0.22, // ~7.5 hours
-    energy: 0.18     // ~9.2 hours
-};
+const DECAY_RATES = { hunger: 0.35, happiness: 0.22, energy: 0.18 };
 
 function applyDecay() {
     const now = Date.now();
     const lastCheck = appState.lastDecayCheck || appState.pet.updatedAt || now;
     const minutesElapsed = (now - lastCheck) / 60000;
 
-    if (minutesElapsed > 0.1) { // Only decay if more than 6 seconds passed
+    if (minutesElapsed > 0.1) {
         appState.pet.hunger = Math.max(0, Math.round(appState.pet.hunger - DECAY_RATES.hunger * minutesElapsed));
         appState.pet.happiness = Math.max(0, Math.round(appState.pet.happiness - DECAY_RATES.happiness * minutesElapsed));
         appState.pet.energy = Math.max(0, Math.round(appState.pet.energy - DECAY_RATES.energy * minutesElapsed));
     }
-
     appState.lastDecayCheck = now;
     updateEvolution();
 }
@@ -460,100 +281,91 @@ function updateEvolution() {
     }
 }
 
-// Action effects
 const ACTION_EFFECTS = {
-    feed: { hunger: 30, happiness: 5, energy: 0, emoji: '🍖', message: '喂食' },
-    play: { hunger: -5, happiness: 25, energy: -10, emoji: '🎾', message: '玩耍' },
-    sleep: { hunger: -5, happiness: 0, energy: 40, emoji: '😴', message: '哄睡' },
-    love: { hunger: 0, happiness: 20, energy: 5, emoji: '💕', message: '亲亲' }
+    feed: { hunger: 30, happiness: 5,  energy: 0,  emoji: '🍖', verb: '喂食' },
+    play: { hunger: -5, happiness: 25, energy: -10, emoji: '🎾', verb: '玩耍' },
+    sleep:{ hunger: -5, happiness: 0,  energy: 40,  emoji: '😴', verb: '哄睡' },
+    love: { hunger: 0,  happiness: 20, energy: 5,   emoji: '💕', verb: '亲亲' }
 };
 
 function performAction(action) {
-    // Check cooldown
+    if (!appState.loggedInUser) {
+        showToast('请先登录~');
+        return;
+    }
+
     const now = Date.now();
     if (appState.cooldowns[action] > now) {
         const remaining = Math.ceil((appState.cooldowns[action] - now) / 1000);
-        showToast(`⏳ 请等待 ${remaining} 秒后再试~`);
+        showToast(`⏳ 冷却中，等 ${remaining} 秒~`);
         shakePet();
         return;
     }
 
-    const effect = ACTION_EFFECTS[action];
-
-    // Apply effects
-    appState.pet.hunger = Math.min(100, Math.max(0, appState.pet.hunger + effect.hunger));
-    appState.pet.happiness = Math.min(100, Math.max(0, appState.pet.happiness + effect.happiness));
-    appState.pet.energy = Math.min(100, Math.max(0, appState.pet.energy + effect.energy));
+    const eff = ACTION_EFFECTS[action];
+    appState.pet.hunger = Math.min(100, Math.max(0, appState.pet.hunger + eff.hunger));
+    appState.pet.happiness = Math.min(100, Math.max(0, appState.pet.happiness + eff.happiness));
+    appState.pet.energy = Math.min(100, Math.max(0, appState.pet.energy + eff.energy));
     appState.pet.updatedAt = now;
-    appState.pet.updatedBy = appState.identity;
-
-    // Set cooldown
+    appState.pet.updatedBy = appState.loggedInUser;
     appState.cooldowns[action] = now + COOLDOWNS[action];
 
-    // Update evolution
     updateEvolution();
 
-    // Add activity log
+    // Log
     const logEntry = {
-        id: Date.now(),
+        id: Date.now() + Math.random(),
         action: action,
-        actor: appState.identity,
-        message: `${appState.identity}给${appState.pet.name}${effect.message}了`,
+        actor: appState.loggedInUser,
+        message: `${appState.loggedInUser}给${appState.pet.name}${eff.verb}了`,
         createdAt: now
     };
     appState.activityLog.unshift(logEntry);
 
-    // Update pet timestamp fields
+    // Timestamps
     const fieldMap = { feed: 'lastFedAt', play: 'lastPlayedAt', sleep: 'lastSleptAt', love: 'lastLovedAt' };
     appState.pet[fieldMap[action]] = new Date(now).toISOString();
 
-    // Update all UI
     updateAllUI();
-    saveLocalState();
-
-    // Sync
-    savePetToSupabase();
-    saveLogToSupabase(logEntry);
+    saveAllData();
     broadcastUpdate('petUpdate', {
         hunger: appState.pet.hunger,
         happiness: appState.pet.happiness,
         energy: appState.pet.energy,
         evolutionStage: appState.pet.evolutionStage,
-        updatedBy: appState.identity,
+        updatedBy: appState.loggedInUser,
         updatedAt: now
     });
     broadcastUpdate('log', logEntry);
 
-    // Visual feedback
-    spawnEffect(effect.emoji);
-    petSay(getRandomHappyPhrase(action));
-    showToast(`${effect.emoji} ${appState.identity}${effect.message}了${appState.pet.name}！`);
+    spawnEffect(eff.emoji);
+    petSay(getPetPhrase(action));
+    showToast(`${eff.emoji} ${appState.loggedInUser}${eff.verb}了${appState.pet.name}！`);
 
-    // Button animation
+    // Button bounce
     const btnMap = { feed: 'btnFeed', play: 'btnPlay', sleep: 'btnSleep', love: 'btnLove' };
     const btn = document.getElementById(btnMap[action]);
     if (btn) {
-        btn.style.transform = 'scale(1.1)';
-        setTimeout(() => { btn.style.transform = ''; }, 200);
+        btn.style.transform = 'scale(1.15)';
+        setTimeout(() => { btn.style.transform = ''; }, 180);
     }
 }
 
 function shakePet() {
     const petEl = document.getElementById('pet');
+    if (!petEl) return;
     petEl.style.animation = 'none';
-    petEl.offsetHeight; // reflow
+    petEl.offsetHeight;
     petEl.style.animation = 'shake 0.5s ease';
-    setTimeout(() => {
-        petEl.style.animation = 'petFloat 3s ease-in-out infinite';
-    }, 500);
+    setTimeout(() => { petEl.style.animation = 'petFloat 3s ease-in-out infinite'; }, 500);
 }
 
-function getRandomHappyPhrase(action) {
+function getPetPhrase(action) {
     const phrases = {
-        feed: ['好好吃呀~', '吃饱饱啦！', '谢谢！美味~', '还要还要！', '嗝~好满足'],
-        play: ['好开心呀！', '再来一次！', '哈哈哈~', '好好玩！', '耶！'],
-        sleep: ['晚安~💤', '好舒服...', 'zzz...', '做个好梦~', '呼...呼...'],
-        love: ['嘿嘿~', '我也爱你！', '好幸福~', '抱抱！', '亲亲！']
+        feed:  ['好好吃呀~', '吃饱饱啦！', '谢谢！美味~', '还要还要！', '嗝~好满足'],
+        play:  ['好开心呀！', '再来一次！', '哈哈哈~', '好好玩！', '耶！跑起来！'],
+        sleep: ['晚安~💤', '好舒服...', 'zzZZ...', '做个好梦~', '呼...呼...'],
+        love:  ['嘿嘿~', '我也爱你！', '好幸福~', '抱抱！', '亲亲！mua~']
     };
     const pool = phrases[action] || ['谢谢你~'];
     return pool[Math.floor(Math.random() * pool.length)];
@@ -563,6 +375,8 @@ function getRandomHappyPhrase(action) {
 // UI UPDATES
 // ============================================
 function updateAllUI() {
+    if (!appState.loggedInUser) return;
+    updateLoginUI();
     updatePetDisplay();
     updateStats();
     updateEvolutionBadge();
@@ -576,117 +390,80 @@ function updateAllUI() {
 function updatePetDisplay() {
     const petBody = document.querySelector('.pet-body');
     const petMouth = document.getElementById('petMouth');
+    if (!petBody || !petMouth) return;
 
-    // Update pet body class for evolution stage
     petBody.className = 'pet-body';
     petBody.classList.add(`stage-${appState.pet.evolutionStage}`);
 
-    // Update mouth based on overall mood
     const avg = (appState.pet.hunger + appState.pet.happiness + appState.pet.energy) / 3;
     petMouth.className = 'pet-mouth';
+    if (avg >= 60) petMouth.classList.add('happy');
+    else if (avg >= 30) petMouth.classList.add('neutral');
+    else petMouth.classList.add('sad');
 
-    if (avg >= 60) {
-        petMouth.classList.add('happy');
-    } else if (avg >= 30) {
-        petMouth.classList.add('neutral');
-    } else {
-        petMouth.classList.add('sad');
-    }
-
-    // Update pet animation speed based on happiness
     const pet = document.getElementById('pet');
-    const duration = appState.pet.happiness > 60 ? 2 : appState.pet.happiness > 30 ? 3 : 4;
-    pet.style.animationDuration = `${duration}s`;
+    const dur = appState.pet.happiness > 60 ? 2 : appState.pet.happiness > 30 ? 3 : 4;
+    if (pet) pet.style.animationDuration = `${dur}s`;
 }
 
 function updateStats() {
-    const hungerBar = document.getElementById('hungerBar');
-    const happinessBar = document.getElementById('happinessBar');
-    const energyBar = document.getElementById('energyBar');
-    const hungerValue = document.getElementById('hungerValue');
-    const happinessValue = document.getElementById('happinessValue');
-    const energyValue = document.getElementById('energyValue');
+    const els = {
+        hungerBar: document.getElementById('hungerBar'),
+        happinessBar: document.getElementById('happinessBar'),
+        energyBar: document.getElementById('energyBar'),
+        hungerValue: document.getElementById('hungerValue'),
+        happinessValue: document.getElementById('happinessValue'),
+        energyValue: document.getElementById('energyValue')
+    };
 
-    hungerBar.style.width = `${appState.pet.hunger}%`;
-    happinessBar.style.width = `${appState.pet.happiness}%`;
-    energyBar.style.width = `${appState.pet.energy}%`;
+    if (els.hungerBar) els.hungerBar.style.width = `${appState.pet.hunger}%`;
+    if (els.happinessBar) els.happinessBar.style.width = `${appState.pet.happiness}%`;
+    if (els.energyBar) els.energyBar.style.width = `${appState.pet.energy}%`;
 
-    hungerValue.textContent = appState.pet.hunger;
-    happinessValue.textContent = appState.pet.happiness;
-    energyValue.textContent = appState.pet.energy;
+    // Reset colors
+    [els.hungerValue, els.happinessValue, els.energyValue].forEach(el => {
+        if (el) { el.style.color = ''; el.textContent = ''; }
+    });
 
-    // Color warnings for low stats
-    [hungerValue, happinessValue, energyValue].forEach(el => el.style.color = '');
-
-    if (appState.pet.hunger < 20) {
-        hungerValue.style.color = '#e74c3c';
-        hungerValue.textContent = appState.pet.hunger + ' ⚠️';
+    if (els.hungerValue) {
+        els.hungerValue.textContent = appState.pet.hunger;
+        if (appState.pet.hunger < 20) { els.hungerValue.style.color = '#e74c3c'; els.hungerValue.textContent += ' ⚠️'; }
     }
-    if (appState.pet.happiness < 20) {
-        happinessValue.style.color = '#e74c3c';
-        happinessValue.textContent = appState.pet.happiness + ' ⚠️';
+    if (els.happinessValue) {
+        els.happinessValue.textContent = appState.pet.happiness;
+        if (appState.pet.happiness < 20) { els.happinessValue.style.color = '#e74c3c'; els.happinessValue.textContent += ' ⚠️'; }
     }
-    if (appState.pet.energy < 20) {
-        energyValue.style.color = '#e74c3c';
-        energyValue.textContent = appState.pet.energy + ' ⚠️';
+    if (els.energyValue) {
+        els.energyValue.textContent = appState.pet.energy;
+        if (appState.pet.energy < 20) { els.energyValue.style.color = '#e74c3c'; els.energyValue.textContent += ' ⚠️'; }
     }
 }
 
 function updateEvolutionBadge() {
     const badge = document.getElementById('evolutionBadge');
-    const stages = {
-        1: '🥚 蛋蛋',
-        2: '🐣 幼崽',
-        3: '🐥 成长期',
-        4: '🌟 成熟期',
-        5: '👑 完全体'
-    };
+    if (!badge) return;
+    const stages = { 1: '🥚 蛋蛋', 2: '🐣 幼崽', 3: '🐥 成长期', 4: '🌟 成熟期', 5: '👑 完全体' };
     badge.textContent = stages[appState.pet.evolutionStage] || '🥚 蛋蛋';
 }
 
 function updateDaysCounter() {
-    const daysCount = document.getElementById('daysCount');
-    if (appState.anniversary) {
-        const start = new Date(appState.anniversary);
-        const now = new Date();
-        const diffTime = now - start;
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays >= 0) {
-            daysCount.textContent = diffDays;
-        } else {
-            daysCount.textContent = '...';
-        }
-    }
+    const el = document.getElementById('daysCount');
+    if (!el || !appState.anniversary) return;
+    const start = new Date(appState.anniversary);
+    const diffDays = Math.floor((Date.now() - start) / 86400000);
+    el.textContent = diffDays >= 0 ? diffDays : '...';
 }
 
 function updatePetNameDisplay() {
-    const display = document.getElementById('petNameDisplay');
-    if (display) {
-        display.textContent = appState.pet.name;
-    }
-}
-
-function updateOnlineStatus(connected) {
-    const dot = document.getElementById('onlineDot');
-    const text = document.getElementById('onlineText');
-    if (connected) {
-        dot.classList.add('connected');
-        text.textContent = USE_SUPABASE ? '实时同步已连接' : '本地模式运行中';
-    } else {
-        dot.classList.remove('connected');
-        text.textContent = '等待连接...';
-    }
+    const el = document.getElementById('petNameDisplay');
+    if (el) el.textContent = appState.pet.name;
 }
 
 function updateCooldownButtons() {
     const now = Date.now();
-    const actions = ['feed', 'play', 'sleep', 'love'];
-    const btnIds = ['btnFeed', 'btnPlay', 'btnSleep', 'btnLove'];
-
-    actions.forEach((action, i) => {
-        const btn = document.getElementById(btnIds[i]);
+    ['feed','play','sleep','love'].forEach((action, i) => {
+        const btn = document.getElementById(['btnFeed','btnPlay','btnSleep','btnLove'][i]);
         if (!btn) return;
-
         if (appState.cooldowns[action] > now) {
             btn.disabled = true;
             btn.classList.remove('ready');
@@ -698,70 +475,67 @@ function updateCooldownButtons() {
 }
 
 // ============================================
-// NOTES
+// NOTES (FIXED - preserves empty element)
 // ============================================
 function sendNote() {
+    if (!appState.loggedInUser) {
+        showToast('请先登录~');
+        return;
+    }
+
     const input = document.getElementById('noteInput');
     const text = input.value.trim();
     if (!text) return;
 
     const note = {
-        id: Date.now(),
-        author: appState.identity,
+        id: Date.now() + Math.random(),
+        author: appState.loggedInUser,
         text: text,
         createdAt: Date.now()
     };
 
     appState.notes.unshift(note);
     input.value = '';
-
     renderNotes();
-    saveLocalState();
-    saveNoteToSupabase(note);
+    saveAllData();
     broadcastUpdate('note', note);
-
     showToast('💌 小纸条已发送！');
 }
 
 function renderNotes() {
     const container = document.getElementById('notesContainer');
-    const empty = document.getElementById('notesEmpty');
+    if (!container) return;
 
     if (appState.notes.length === 0) {
-        container.innerHTML = '';
-        container.appendChild(empty);
-        empty.style.display = '';
+        container.innerHTML = '<div class="notes-empty">还没有小纸条，快来写一张吧~</div>';
         return;
     }
 
-    empty.style.display = 'none';
-    container.innerHTML = appState.notes.map(note => `
-        <div class="note-card">
-            <div class="note-author">${note.author === '李安' ? '👦' : '👧'} ${note.author}</div>
+    container.innerHTML = appState.notes.map(note => {
+        const isLi = note.author === '李安';
+        return `
+        <div class="note-card ${isLi ? 'note-li' : 'note-han'}">
+            <div class="note-author">${isLi ? '👦' : '👧'} ${note.author}</div>
             <div class="note-text">${escapeHtml(note.text)}</div>
             <div class="note-time">${formatTime(note.createdAt)}</div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 // ============================================
-// ACTIVITY LOG
+// ACTIVITY LOG (FIXED - preserves empty element)
 // ============================================
 function renderActivityLog() {
     const container = document.getElementById('logContainer');
-    const empty = document.getElementById('logEmpty');
+    if (!container) return;
 
     if (appState.activityLog.length === 0) {
-        container.innerHTML = '';
-        container.appendChild(empty);
-        empty.style.display = '';
+        container.innerHTML = '<div class="log-empty">还没有动态，快来互动吧~</div>';
         return;
     }
 
-    empty.style.display = 'none';
-    const emojiMap = { feed: '🍖', play: '🎾', sleep: '😴', love: '💕' };
-
-    container.innerHTML = appState.activityLog.slice(0, 30).map(entry => `
+    const emojiMap = { feed: '🍖', play: '🎾', sleep: '😴', love: '💕', settings: '⚙️' };
+    container.innerHTML = appState.activityLog.slice(0, 40).map(entry => `
         <div class="log-entry">
             <span class="log-emoji">${emojiMap[entry.action] || '🦋'}</span>
             <span class="log-message">${escapeHtml(entry.message)}</span>
@@ -771,45 +545,57 @@ function renderActivityLog() {
 }
 
 // ============================================
-// IDENTITY
+// BROADCAST CHANNEL (Cross-tab sync)
 // ============================================
-function setIdentity(name) {
-    appState.identity = name;
-    document.getElementById('btnLiAn').classList.toggle('active', name === '李安');
-    document.getElementById('btnHan').classList.toggle('active', name === '韩舒薇');
+let bc = null;
+function setupBroadcastChannel() {
+    try {
+        bc = new BroadcastChannel('love-nest-v2');
+        bc.onmessage = (event) => {
+            const { type, data } = event.data;
+            if (type === 'petUpdate' && data.updatedBy !== appState.loggedInUser) {
+                Object.assign(appState.pet, data);
+                updateAllUI();
+                saveAllData();
+                petSay(`${data.updatedBy}刚刚照顾了我~`);
+                showToast(`🔄 ${data.updatedBy}在另一个窗口互动了！`);
+            } else if (type === 'note' && data.author !== appState.loggedInUser) {
+                appState.notes.unshift(data);
+                renderNotes();
+                saveAllData();
+                showToast(`💌 ${data.author}写了一张小纸条！`);
+            } else if (type === 'log' && data.actor !== appState.loggedInUser) {
+                appState.activityLog.unshift(data);
+                renderActivityLog();
+                saveAllData();
+            }
+        };
+    } catch (e) { /* not supported */ }
+}
 
-    // Update URL hash
-    const hash = name === '韩舒薇' ? 'han' : 'li';
-    window.location.hash = hash;
-
-    saveLocalState();
-    showToast(`👋 你好，${name}！`);
-    petSay(`${name}来啦~`);
+function broadcastUpdate(type, data) {
+    if (bc) {
+        try { bc.postMessage({ type, data }); } catch (e) {}
+    }
 }
 
 // ============================================
-// PET SPEECH
+// PET SPEECH & EFFECTS
 // ============================================
 let speechTimeout = null;
-
 function petSay(message) {
     const bubble = document.getElementById('speechBubble');
     const text = document.getElementById('speechText');
-
+    if (!bubble || !text) return;
     text.textContent = message;
     bubble.style.display = '';
-
     if (speechTimeout) clearTimeout(speechTimeout);
-    speechTimeout = setTimeout(() => {
-        bubble.style.display = 'none';
-    }, 3000);
+    speechTimeout = setTimeout(() => { bubble.style.display = 'none'; }, 3500);
 }
 
-// ============================================
-// EFFECTS
-// ============================================
 function spawnEffect(emoji) {
     const effects = document.getElementById('petEffects');
+    if (!effects) return;
     const el = document.createElement('span');
     el.className = 'effect-heart';
     el.textContent = emoji;
@@ -817,80 +603,63 @@ function spawnEffect(emoji) {
     el.style.top = `${20 + Math.random() * 40}%`;
     el.style.animationDuration = `${0.8 + Math.random() * 0.6}s`;
     effects.appendChild(el);
-
     setTimeout(() => el.remove(), 1500);
 }
 
 // ============================================
-// FLOATING HEARTS BACKGROUND
+// HEARTS BACKGROUND
 // ============================================
 function startHeartAnimation() {
     const bg = document.getElementById('heartsBg');
-    const hearts = ['💕', '💖', '💗', '💝', '💘', '✨', '🌸', '🦋', '💫', '🌷'];
+    if (!bg) return;
+    const hearts = ['💕','💖','💗','💝','💘','✨','🌸','🦋','💫','🌷','💓','💞'];
 
     function createHeart() {
-        const heart = document.createElement('span');
-        heart.className = 'heart-float';
-        heart.textContent = hearts[Math.floor(Math.random() * hearts.length)];
-        heart.style.left = `${Math.random() * 100}%`;
-        heart.style.fontSize = `${14 + Math.random() * 24}px`;
-        heart.style.animationDuration = `${8 + Math.random() * 12}s`;
-        heart.style.animationDelay = '0s';
-        bg.appendChild(heart);
-
-        setTimeout(() => heart.remove(), 20000);
+        const h = document.createElement('span');
+        h.className = 'heart-float';
+        h.textContent = hearts[Math.floor(Math.random() * hearts.length)];
+        h.style.left = `${Math.random() * 100}%`;
+        h.style.fontSize = `${14 + Math.random() * 24}px`;
+        h.style.animationDuration = `${8 + Math.random() * 12}s`;
+        bg.appendChild(h);
+        setTimeout(() => h.remove(), 20000);
     }
 
-    // Initial burst
-    for (let i = 0; i < 10; i++) {
-        setTimeout(createHeart, i * 400);
-    }
-
-    // Continuous
-    setInterval(createHeart, 2000);
+    for (let i = 0; i < 8; i++) setTimeout(createHeart, i * 500);
+    setInterval(createHeart, 2200);
 }
 
 // ============================================
-// DECAY TIMER
+// TIMERS
 // ============================================
+let decayInterval = null;
 function startDecayTimer() {
-    setInterval(() => {
+    if (decayInterval) clearInterval(decayInterval);
+    decayInterval = setInterval(() => {
         applyDecay();
         updateAllUI();
-        saveLocalState();
-
-        // Save to Supabase every 30 seconds if stats changed
-        if (USE_SUPABASE && supabase) {
-            // Throttled - only save occasionally
-        }
-    }, 10000); // Check every 10 seconds
+        saveAllData();
+    }, 10000);
 }
 
-// ============================================
-// COOLDOWN TIMER
-// ============================================
+let cooldownInterval = null;
 function startCooldownTimers() {
-    setInterval(() => {
-        updateCooldownButtons();
-    }, 1000);
+    if (cooldownInterval) clearInterval(cooldownInterval);
+    cooldownInterval = setInterval(updateCooldownButtons, 1000);
 }
 
 // ============================================
 // TOAST
 // ============================================
 let toastTimeout = null;
-
 function showToast(message) {
     const toast = document.getElementById('toast');
     const msg = document.getElementById('toastMsg');
-
+    if (!toast || !msg) return;
     msg.textContent = message;
     toast.style.display = '';
-
     if (toastTimeout) clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => {
-        toast.style.display = 'none';
-    }, 2500);
+    toastTimeout = setTimeout(() => { toast.style.display = 'none'; }, 2500);
 }
 
 // ============================================
@@ -912,32 +681,25 @@ function saveSettings() {
 
     if (newName) {
         appState.pet.name = newName;
-        addLogEntry('settings', `${appState.identity}把小宠物改名为「${newName}」`);
+        const entry = {
+            id: Date.now() + Math.random(),
+            action: 'settings',
+            actor: appState.loggedInUser,
+            message: `${appState.loggedInUser}把宠物名字改为「${newName}」`,
+            createdAt: Date.now()
+        };
+        appState.activityLog.unshift(entry);
+        broadcastUpdate('log', entry);
+        petSay(`我有新名字啦！我叫${newName}~`);
     }
     if (newDate) {
         appState.anniversary = newDate;
     }
 
     updateAllUI();
-    saveLocalState();
-    saveSettingsToSupabase();
-    savePetToSupabase();
-
+    saveAllData();
     closeSettings();
     showToast('✅ 设置已保存！');
-    if (newName) petSay(`我有新名字啦！我叫${newName}~`);
-}
-
-function addLogEntry(action, message) {
-    const entry = {
-        id: Date.now(),
-        action: action,
-        actor: appState.identity,
-        message: message,
-        createdAt: Date.now()
-    };
-    appState.activityLog.unshift(entry);
-    saveLogToSupabase(entry);
 }
 
 // ============================================
@@ -951,80 +713,79 @@ function escapeHtml(text) {
 
 function formatTime(timestamp) {
     const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMin = Math.floor(diffMs / 60000);
-
+    const diffMin = Math.floor((Date.now() - date) / 60000);
     if (diffMin < 1) return '刚刚';
     if (diffMin < 60) return `${diffMin}分钟前`;
-
     const diffHour = Math.floor(diffMin / 60);
     if (diffHour < 24) return `${diffHour}小时前`;
-
     const diffDay = Math.floor(diffHour / 24);
     if (diffDay < 7) return `${diffDay}天前`;
-
-    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return `${date.getMonth()+1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
 }
 
 // ============================================
-// PET CLICK INTERACTION
+// PET CLICK
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         const petEl = document.getElementById('pet');
         if (petEl) {
             petEl.addEventListener('click', () => {
+                if (!appState.loggedInUser) return;
                 const avg = (appState.pet.hunger + appState.pet.happiness + appState.pet.energy) / 3;
                 const phrases = avg >= 60
-                    ? ['嘻嘻~别挠了！', '好痒呀~', '再摸一下嘛~', '嘿嘿嘿~']
+                    ? ['嘻嘻~别挠了！', '好痒呀~', '再摸一下嘛~', '嘿嘿嘿~', '好开心！']
                     : avg >= 30
-                    ? ['嗯...抱抱~', '有点饿了...', '陪我玩嘛~']
-                    : ['呜呜...好饿...', '好困...', '快照顾我...'];
-
+                    ? ['嗯...抱抱~', '有点饿了...', '陪我玩嘛~', '呼...']
+                    : ['呜呜...好饿...', '好困...', '快照顾我嘛...', '好难受...'];
                 petSay(phrases[Math.floor(Math.random() * phrases.length)]);
                 spawnEffect('💕');
             });
         }
-    }, 100);
+    }, 200);
 });
 
-// ============================================
-// KEYBOARD SHORTCUTS
-// ============================================
-document.addEventListener('keydown', (e) => {
-    switch(e.key.toLowerCase()) {
-        case 'f': performAction('feed'); break;
-        case 'p': performAction('play'); break;
-        case 's':
-            if (!e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
-                performAction('sleep');
-            }
-            break;
-        case 'l':
-            if (!e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
-                performAction('love');
-            }
-            break;
-    }
+// Enter key to login
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const pwInput = document.getElementById('loginPassword');
+        const nameInput = document.getElementById('loginName');
+        if (pwInput) {
+            pwInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') attemptLogin();
+            });
+        }
+        if (nameInput) {
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') document.getElementById('loginPassword').focus();
+            });
+        }
+        // Note send on Ctrl+Enter
+        const noteInput = document.getElementById('noteInput');
+        if (noteInput) {
+            noteInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.ctrlKey) sendNote();
+            });
+        }
+    }, 300);
 });
 
-// Add shake animation
-const shakeStyle = document.createElement('style');
-shakeStyle.textContent = `
+// Inject shake keyframe if needed
+const styleEl = document.createElement('style');
+styleEl.textContent = `
     @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        25% { transform: translateX(-8px); }
-        50% { transform: translateX(8px); }
-        75% { transform: translateX(-8px); }
+        0%,100%{transform:translateX(0)}
+        25%{transform:translateX(-8px)}
+        50%{transform:translateX(8px)}
+        75%{transform:translateX(-8px)}
     }
     @keyframes petFloat {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-12px); }
+        0%,100%{transform:translateY(0)}
+        50%{transform:translateY(-12px)}
     }
 `;
-document.head.appendChild(shakeStyle);
+document.head.appendChild(styleEl);
 
-console.log('💕 恋爱小窝已就绪！');
-console.log('👦 李安 ❤️ 韩舒薇 👧');
-console.log('🐾 快捷键: F=喂食 P=玩耍 S=哄睡 L=亲亲');
+console.log('💕 恋爱小窝 v2.0 已就绪');
+console.log('👦 李安 | 密码: lian520');
+console.log('👧 韩舒薇 | 密码: shuwei520');
