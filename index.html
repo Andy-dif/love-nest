@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>李安 ❤️ 韩舒薇 - 我们的恋爱小窝</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💕</text></svg>">
+</head>
+<body>
+    <!-- Floating Hearts Background -->
+    <div class="hearts-bg" id="heartsBg"></div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+
+        <!-- Header -->
+        <header class="header">
+            <h1 class="title">
+                <span class="name name-li">李安</span>
+                <span class="heart-icon">💕</span>
+                <span class="name name-han">韩舒薇</span>
+            </h1>
+            <p class="subtitle">我们的小窝</p>
+            <div class="days-counter" id="daysCounter">
+                💝 在一起的第 <span id="daysCount">...</span> 天 💝
+            </div>
+        </header>
+
+        <!-- Pet Section -->
+        <section class="pet-section">
+            <h2 class="section-title">我们的宠物 <span class="pet-name-display" id="petNameDisplay">小团子</span></h2>
+
+            <!-- Pet Evolution Stage -->
+            <div class="evolution-badge" id="evolutionBadge">🥚 蛋蛋</div>
+
+            <!-- Pet Container -->
+            <div class="pet-container" id="petContainer">
+                <div class="pet" id="pet">
+                    <div class="pet-body">
+                        <div class="pet-eye pet-eye-left">
+                            <div class="pet-pupil"></div>
+                        </div>
+                        <div class="pet-eye pet-eye-right">
+                            <div class="pet-pupil"></div>
+                        </div>
+                        <div class="pet-mouth" id="petMouth"></div>
+                        <div class="pet-cheek pet-cheek-left"></div>
+                        <div class="pet-cheek pet-cheek-right"></div>
+                    </div>
+                    <!-- Pet Effects -->
+                    <div class="pet-effects" id="petEffects"></div>
+                </div>
+                <!-- Speech Bubble -->
+                <div class="speech-bubble" id="speechBubble" style="display:none;">
+                    <span id="speechText"></span>
+                </div>
+            </div>
+
+            <!-- Pet Stats -->
+            <div class="stats-container">
+                <div class="stat-item">
+                    <div class="stat-label">🍖 饱腹度</div>
+                    <div class="stat-bar-bg">
+                        <div class="stat-bar-fill hunger-fill" id="hungerBar"></div>
+                    </div>
+                    <span class="stat-value" id="hungerValue">100</span>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">😊 开心值</div>
+                    <div class="stat-bar-bg">
+                        <div class="stat-bar-fill happy-fill" id="happinessBar"></div>
+                    </div>
+                    <span class="stat-value" id="happinessValue">100</span>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">⚡ 精力值</div>
+                    <div class="stat-bar-bg">
+                        <div class="stat-bar-fill energy-fill" id="energyBar"></div>
+                    </div>
+                    <span class="stat-value" id="energyValue">100</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="actions-container">
+                <button class="action-btn feed-btn" onclick="performAction('feed')" id="btnFeed">
+                    <span class="btn-icon">🍖</span>
+                    <span class="btn-label">喂食</span>
+                    <span class="btn-effect">+30</span>
+                </button>
+                <button class="action-btn play-btn" onclick="performAction('play')" id="btnPlay">
+                    <span class="btn-icon">🎾</span>
+                    <span class="btn-label">玩耍</span>
+                    <span class="btn-effect">+25</span>
+                </button>
+                <button class="action-btn sleep-btn" onclick="performAction('sleep')" id="btnSleep">
+                    <span class="btn-icon">😴</span>
+                    <span class="btn-label">哄睡</span>
+                    <span class="btn-effect">+40</span>
+                </button>
+                <button class="action-btn love-btn" onclick="performAction('love')" id="btnLove">
+                    <span class="btn-icon">💕</span>
+                    <span class="btn-label">亲亲</span>
+                    <span class="btn-effect">+20</span>
+                </button>
+            </div>
+
+            <!-- Who's acting -->
+            <div class="who-acting">
+                <span>我是：</span>
+                <button class="identity-btn active" id="btnLiAn" onclick="setIdentity('李安')">👦 李安</button>
+                <button class="identity-btn" id="btnHan" onclick="setIdentity('韩舒薇')">👧 韩舒薇</button>
+            </div>
+
+            <!-- Online indicator -->
+            <div class="online-indicator">
+                <span class="online-dot" id="onlineDot"></span>
+                <span id="onlineText">等待对方上线...</span>
+            </div>
+        </section>
+
+        <!-- Love Notes Section -->
+        <section class="notes-section">
+            <h2 class="section-title">💌 恋爱小纸条</h2>
+            <div class="notes-container" id="notesContainer">
+                <div class="notes-empty" id="notesEmpty">还没有小纸条，快来写一张吧~</div>
+            </div>
+            <div class="note-input-area">
+                <textarea id="noteInput" placeholder="给舒薇/李安写一句话..." maxlength="200"></textarea>
+                <button class="send-note-btn" onclick="sendNote()">💌 发送</button>
+            </div>
+        </section>
+
+        <!-- Activity Log -->
+        <section class="log-section">
+            <h2 class="section-title">📋 动态记录</h2>
+            <div class="log-container" id="logContainer">
+                <div class="log-empty" id="logEmpty">还没有动态，快来互动吧~</div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>李安 💕 韩舒薇 · 永远在一起</p>
+            <p class="footer-small">一起照顾我们的小宠物吧~</p>
+        </footer>
+    </div>
+
+    <!-- Anniversary Settings Modal -->
+    <div class="modal-overlay" id="settingsModal" style="display:none;">
+        <div class="modal">
+            <h3>⚙️ 设置</h3>
+            <div class="form-group">
+                <label>宠物名字：</label>
+                <input type="text" id="inputPetName" placeholder="给小宠物起个名字" maxlength="10">
+            </div>
+            <div class="form-group">
+                <label>纪念日：</label>
+                <input type="date" id="inputAnniversary">
+            </div>
+            <div class="modal-btns">
+                <button class="modal-btn save-btn" onclick="saveSettings()">💾 保存</button>
+                <button class="modal-btn cancel-btn" onclick="closeSettings()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast" style="display:none;">
+        <span id="toastMsg"></span>
+    </div>
+
+    <!-- Settings gear -->
+    <button class="settings-gear" onclick="openSettings()" title="设置">⚙️</button>
+
+    <!-- Supabase CDN (for real-time sync) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- App Scripts -->
+    <script src="js/app.js"></script>
+</body>
+</html>
