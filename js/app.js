@@ -30,55 +30,136 @@ const SUPABASE_CONFIG = {
     anonKey: 'sb_publishable_JpvK6DW9AF2PDbfc5Q7dwQ_76eyXu3O'
 };
 
-let supabase = null;
-let supabaseChannel = null;
-
-function initSupabase() {
-    function connectSupabase() {
+// Lightweight Supabase client - no CDN needed!
+const DB = {
+    _url: SUPABASE_CONFIG.url + '/rest/v1',
+    _key: SUPABASE_CONFIG.anonKey,
+    _headers() {
+        return {
+            'apikey': this._key,
+            'Authorization': 'Bearer ' + this._key,
+            'Content-Type': 'application/json'
+        };
+    },
+    async get(table, query) {
         try {
-            if (!window.supabase || !window.supabase.createClient) return false;
-            supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-            console.log('Supabase connected!');
-            return true;
-        } catch (e) {
-            console.warn('Supabase init error:', e.message);
-            return false;
-        }
+            let url = `${this._url}/${table}?${query || ''}`;
+            const res = await fetch(url, { headers: this._headers() });
+            if (!res.ok) throw new Error(res.status);
+            return await res.json();
+        } catch (e) { return null; }
+    },
+    async post(table, data) {
+        try {
+            const res = await fetch(`${this._url}/${table}`, {
+                method: 'POST',
+                headers: { ...this._headers(), 'Prefer': 'return=minimal' },
+                body: JSON.stringify(data)
+            });
+            return res.ok;
+        } catch (e) { return false; }
+    },
+    async upsert(table, data) {
+        try {
+            const res = await fetch(`${this._url}/${table}`, {
+                method: 'POST',
+                headers: { ...this._headers(), 'Prefer': 'resolution=merge-duplicates' },
+                body: JSON.stringify(data)
+            });
+            return res.ok;
+        } catch (e) { return false; }
     }
+};
 
-    function afterConnect() {
-        loadFromCloud().then(() => {
-            subscribeToCloudChanges();
-            updateAllUI();
-            updateOnlineStatus(true);
-        }).catch(() => {
-            updateOnlineStatus(false);
-        });
-    }
+let cloudReady = false;
+let pollTimer = null;
+let lastCloudCheck = 0;
 
-    // Already loaded?
-    if (connectSupabase()) {
-        afterConnect();
-        return;
-    }
-
-    // Dynamic load
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-    script.onload = function() {
-        if (connectSupabase()) {
-            afterConnect();
-        }
-    };
-    script.onerror = function() {
+async function initCloud() {
+    // Test connection
+    const data = await DB.get('pet_state', 'id=eq.1');
+    if (data && data.length > 0) {
+        cloudReady = true;
+        console.log('Cloud connected via REST API');
+        await loadFromCloud();
+        updateOnlineStatus(true);
+        startCloudPolling();
+    } else {
+        console.log('Cloud not available, local mode');
         updateOnlineStatus(false);
-    };
-    document.head.appendChild(script);
+        // Retry in 10 seconds
+        setTimeout(initCloud, 10000);
+    }
+}
 
-    // 8s timeout
-    setTimeout(function() {
-        if (!supabase) updateOnlineStatus(false);
-    }, 8000);
+function startCloudPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(checkCloudUpdates, 3000); // Poll every 3 seconds
+}
+
+async function checkCloudUpdates() {
+    if (!cloudReady) return;
+    try {
+        // Check pet state
+        const pet = await DB.get('pet_state', 'id=eq.1');
+        if (pet && pet[0]) {
+            const d = pet[0];
+            const cloudUpdated = new Date(d.updated_at).getTime();
+            if (cloudUpdated > lastCloudCheck && d.updated_by && d.updated_by !== appState.loggedInUser) {
+                lastCloudCheck = cloudUpdated;
+                if (appState.pet.updatedAt < cloudUpdated) {
+                    appState.pet.hunger = d.hunger;
+                    appState.pet.happiness = d.happiness;
+                    appState.pet.energy = d.energy;
+                    appState.pet.evolutionStage = d.evolution_stage;
+                    appState.pet.name = d.name;
+                    appState.pet.updatedBy = d.updated_by;
+                    appState.pet.updatedAt = cloudUpdated;
+                    updateAllUI();
+                    saveAllData();
+                    showToast(`🔄 ${d.updated_by}刚刚照顾了宠物！`);
+                }
+            } else {
+                lastCloudCheck = Math.max(lastCloudCheck, cloudUpdated);
+            }
+        }
+
+        // Check new notes
+        if (appState.notes.length > 0) {
+            const latestId = appState.notes[0].id;
+            const newNotes = await DB.get('love_notes', `order=created_at.desc&limit=5`);
+            if (newNotes) {
+                for (const n of newNotes) {
+                    if (n.author !== appState.loggedInUser && !appState.notes.find(x => x.id === n.id)) {
+                        appState.notes.unshift({
+                            id: n.id, author: n.author, text: n.text,
+                            createdAt: new Date(n.created_at).getTime()
+                        });
+                        renderNotes();
+                        saveAllData();
+                        showToast(`💌 ${n.author}写了一张小纸条！`);
+                    }
+                }
+            }
+        }
+
+        // Check new logs
+        if (appState.activityLog.length > 0) {
+            const newLogs = await DB.get('activity_log', 'order=created_at.desc&limit=5');
+            if (newLogs) {
+                for (const l of newLogs) {
+                    if (l.actor !== appState.loggedInUser && !appState.activityLog.find(x => x.id === l.id)) {
+                        appState.activityLog.unshift({
+                            id: l.id, action: l.action, actor: l.actor,
+                            message: l.message, createdAt: new Date(l.created_at).getTime()
+                        });
+                        renderActivityLog();
+                        saveAllData();
+                    }
+                }
+            }
+        }
+    } catch (e) { /* silent */ }
 }
 
 function safeCloud(fn) {
@@ -87,150 +168,104 @@ function safeCloud(fn) {
 }
 
 async function syncPetToCloud() {
-    if (!supabase) return;
-    try {
-        await supabase.from('pet_state').upsert({
-            id: 1,
-            name: appState.pet.name,
-            hunger: appState.pet.hunger,
-            happiness: appState.pet.happiness,
-            energy: appState.pet.energy,
-            evolution_stage: appState.pet.evolutionStage,
-            last_fed_at: appState.pet.lastFedAt,
-            last_played_at: appState.pet.lastPlayedAt,
-            last_slept_at: appState.pet.lastSleptAt,
-            last_loved_at: appState.pet.lastLovedAt,
-            updated_at: new Date().toISOString(),
-            updated_by: appState.pet.updatedBy
-        });
-    } catch (e) { console.warn('Sync pet failed:', e.message); }
+    if (!cloudReady) return;
+    DB.upsert('pet_state', {
+        id: 1,
+        name: appState.pet.name,
+        hunger: appState.pet.hunger,
+        happiness: appState.pet.happiness,
+        energy: appState.pet.energy,
+        evolution_stage: appState.pet.evolutionStage,
+        last_fed_at: appState.pet.lastFedAt,
+        last_played_at: appState.pet.lastPlayedAt,
+        last_slept_at: appState.pet.lastSleptAt,
+        last_loved_at: appState.pet.lastLovedAt,
+        updated_at: new Date().toISOString(),
+        updated_by: appState.pet.updatedBy
+    });
 }
 
 async function syncNoteToCloud(note) {
-    if (!supabase) return;
-    try {
-        await supabase.from('love_notes').insert({
-            author: note.author,
-            text: note.text,
-            created_at: new Date(note.createdAt).toISOString()
-        });
-    } catch (e) { console.warn('Sync note failed:', e.message); }
+    if (!cloudReady) return;
+    DB.post('love_notes', {
+        author: note.author,
+        text: note.text,
+        created_at: new Date(note.createdAt).toISOString()
+    });
 }
 
 async function syncLogToCloud(entry) {
-    if (!supabase) return;
-    try {
-        await supabase.from('activity_log').insert({
-            action: entry.action,
-            actor: entry.actor,
-            message: entry.message,
-            created_at: new Date(entry.createdAt).toISOString()
-        });
-    } catch (e) { console.warn('Sync log failed:', e.message); }
+    if (!cloudReady) return;
+    DB.post('activity_log', {
+        action: entry.action,
+        actor: entry.actor,
+        message: entry.message,
+        created_at: new Date(entry.createdAt).toISOString()
+    });
 }
 
 async function syncSettingsToCloud() {
-    if (!supabase) return;
-    try {
-        await supabase.from('settings').upsert({
-            id: 1,
-            anniversary: appState.anniversary,
-            updated_at: new Date().toISOString()
-        });
-    } catch (e) { console.warn('Sync settings failed:', e.message); }
+    if (!cloudReady) return;
+    DB.upsert('settings', {
+        id: 1,
+        anniversary: appState.anniversary,
+        updated_at: new Date().toISOString()
+    });
 }
 
 async function loadFromCloud() {
-    if (!supabase) return;
+    if (!cloudReady) return;
     try {
         // Load pet state
-        const { data: petData } = await supabase.from('pet_state').select('*').eq('id', 1).single();
-        if (petData) {
-            appState.pet.name = petData.name || DEFAULT_PET.name;
-            appState.pet.hunger = petData.hunger;
-            appState.pet.happiness = petData.happiness;
-            appState.pet.energy = petData.energy;
-            appState.pet.evolutionStage = petData.evolution_stage || 1;
-            appState.pet.updatedAt = new Date(petData.updated_at).getTime();
-            appState.pet.updatedBy = petData.updated_by || '';
-            appState.pet.lastFedAt = petData.last_fed_at;
-            appState.pet.lastPlayedAt = petData.last_played_at;
-            appState.pet.lastSleptAt = petData.last_slept_at;
-            appState.pet.lastLovedAt = petData.last_loved_at;
+        const petData = await DB.get('pet_state', 'id=eq.1');
+        if (petData && petData[0]) {
+            const d = petData[0];
+            appState.pet.name = d.name || DEFAULT_PET.name;
+            appState.pet.hunger = d.hunger;
+            appState.pet.happiness = d.happiness;
+            appState.pet.energy = d.energy;
+            appState.pet.evolutionStage = d.evolution_stage || 1;
+            appState.pet.updatedAt = new Date(d.updated_at).getTime();
+            appState.pet.updatedBy = d.updated_by || '';
+            appState.pet.lastFedAt = d.last_fed_at;
+            appState.pet.lastPlayedAt = d.last_played_at;
+            appState.pet.lastSleptAt = d.last_slept_at;
+            appState.pet.lastLovedAt = d.last_loved_at;
+            lastCloudCheck = new Date(d.updated_at).getTime();
             applyDecay();
         }
 
         // Load notes
-        const { data: notesData } = await supabase.from('love_notes').select('*').order('created_at', { ascending: false }).limit(50);
+        const notesData = await DB.get('love_notes', 'order=created_at.desc&limit=50');
         if (notesData) {
             appState.notes = notesData.map(n => ({
-                id: n.id, author: n.author, text: n.text, createdAt: new Date(n.created_at).getTime()
+                id: n.id, author: n.author, text: n.text,
+                createdAt: new Date(n.created_at).getTime()
             }));
         }
 
         // Load logs
-        const { data: logData } = await supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(50);
+        const logData = await DB.get('activity_log', 'order=created_at.desc&limit=50');
         if (logData) {
             appState.activityLog = logData.map(l => ({
-                id: l.id, action: l.action, actor: l.actor, message: l.message, createdAt: new Date(l.created_at).getTime()
+                id: l.id, action: l.action, actor: l.actor,
+                message: l.message, createdAt: new Date(l.created_at).getTime()
             }));
         }
 
         // Load settings
-        const { data: settingsData } = await supabase.from('settings').select('*').eq('id', 1).single();
-        if (settingsData) {
-            appState.anniversary = settingsData.anniversary || appState.anniversary;
+        const settingsData = await DB.get('settings', 'id=eq.1');
+        if (settingsData && settingsData[0]) {
+            appState.anniversary = settingsData[0].anniversary || appState.anniversary;
         }
 
         updateAllUI();
         saveAllData();
-        console.log('Cloud data loaded');
-    } catch (e) { console.warn('Cloud load failed:', e.message); }
+        console.log('Cloud data loaded! Pet:', appState.pet.name, 'Notes:', appState.notes.length);
+    } catch (e) { console.warn('Cloud load error:', e); }
 }
 
-function subscribeToCloudChanges() {
-    if (!supabase) return;
-    supabaseChannel = supabase.channel('love-nest-sync')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'pet_state' }, (payload) => {
-            const d = payload.new;
-            if (d && d.updated_by !== appState.loggedInUser) {
-                appState.pet.hunger = d.hunger;
-                appState.pet.happiness = d.happiness;
-                appState.pet.energy = d.energy;
-                appState.pet.evolutionStage = d.evolution_stage;
-                appState.pet.updatedBy = d.updated_by;
-                appState.pet.name = d.name;
-                appState.pet.updatedAt = new Date(d.updated_at).getTime();
-                updateAllUI();
-                saveAllData();
-                showToast(`🔄 ${d.updated_by}刚刚照顾了宠物！`);
-                petSay(`${d.updated_by}在另一边照顾了我~`);
-            }
-        })
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'love_notes' }, (payload) => {
-            const n = payload.new;
-            if (n.author !== appState.loggedInUser) {
-                appState.notes.unshift({ id: n.id, author: n.author, text: n.text, createdAt: new Date(n.created_at).getTime() });
-                renderNotes();
-                saveAllData();
-                showToast(`💌 ${n.author}写了一张小纸条！`);
-            }
-        })
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_log' }, (payload) => {
-            const l = payload.new;
-            if (l.actor !== appState.loggedInUser) {
-                appState.activityLog.unshift({ id: l.id, action: l.action, actor: l.actor, message: l.message, createdAt: new Date(l.created_at).getTime() });
-                renderActivityLog();
-                saveAllData();
-            }
-        })
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                console.log('Real-time sync active!');
-                updateOnlineStatus(true);
-            }
-        });
-}
+// Real-time sync replaced by polling (checkCloudUpdates)
 
 // ============================================
 // APP STATE
@@ -274,8 +309,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAllData();
     startHeartAnimation();
 
-    // Start Supabase in background (non-blocking)
-    initSupabase();
+    // Start cloud sync in background (non-blocking, no CDN needed)
+    initCloud();
 
     // Show UI immediately - don't wait for cloud
     const sessionUser = sessionStorage.getItem('loveNestUser');
@@ -678,7 +713,7 @@ function updateOnlineStatus(connected) {
     const dot = document.getElementById('onlineDot');
     const text = document.getElementById('onlineText');
     if (!dot || !text) return;
-    if (connected && supabase) {
+    if (connected && cloudReady) {
         dot.classList.add('connected');
         text.textContent = '☁️ 云端同步已连接 - 你们可以实时互动啦！';
     } else if (connected) {
@@ -686,7 +721,7 @@ function updateOnlineStatus(connected) {
         text.textContent = '💡 F喂食 P玩耍 S哄睡 L亲亲 | Ctrl+Enter发纸条';
     } else {
         dot.classList.remove('connected');
-        text.textContent = '⚠️ 云端未连接，数据仅保存在本地';
+        text.textContent = '⏳ 正在连接云端...';
     }
 }
 
